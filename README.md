@@ -3,7 +3,7 @@
 ## Xeneon Edge widgets
 
 Widgets for the Corsair Xeneon Edge, made for iCUE's iFrame widget. Paste the URL into an iFrame widget in iCUE.
-
+<img width="2515" height="703" alt="XeneonEdge-Screenshot" src="https://github.com/user-attachments/assets/1ae537df-5020-403a-ae9f-7f56c6c43ba0" />
 ### Serie A
 
 ```
