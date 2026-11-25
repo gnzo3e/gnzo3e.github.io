@@ -23,5 +23,3 @@ Tap a panel to cycle its view:
 | Table | positions 1–10 / 11–20 |
 | Your team | form / home vs away |
 | Title race | points / position |
-
-The data comes from API-Football through the `api-soccer` backend on Render. If the widget hasn't been opened in a while, Render's free tier may take about a minute to wake up on the first load.
