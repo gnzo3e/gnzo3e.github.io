@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Serie A Widget</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #09090b; --card: #18181b; --border: #27272a;
+    --primary: #e4e4e7; --secondary: #a1a1aa; --dim: #52525b; --accent: #fafafa;
+    --win: #4ade80; --loss: #f87171; --draw: #a1a1aa; --live: #4ade80;
+    --ucl: #60a5fa; --uel: #fb923c; --uecl: #a3e635; --rel: #f87171;
+    --gap: clamp(4px, 1vmin, 14px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: var(--bg); color: var(--primary);
+    font-family: "JetBrains Mono", ui-monospace, monospace; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+  /* tracker-style scanlines + top glow */
+  body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 50; opacity: .3;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent); animation: pulse 3s ease-in-out infinite; }
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50; opacity: .2;
+    background: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,.1) 50%), linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,.01), rgba(255,255,255,.03));
+    background-size: 100% 2px, 3px 100%; }
+  @keyframes pulse { 50% { opacity: .1; } }
+  @keyframes blink { 50% { opacity: .35; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .app { display: flex; flex-direction: column; width: 100%; height: 100%; padding: var(--gap); gap: var(--gap); }
+  .grid { flex: 1; min-height: 0; display: grid; gap: var(--gap);
+    grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .grid.n1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .grid.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  .grid.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  /* very wide slots (full Xeneon Edge is 2560x720) → one row */
+  @media (min-aspect-ratio: 5/2) { .grid.n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; } }
+  /* tall/narrow slots → stack */
+  @media (max-aspect-ratio: 4/5) {
+    .grid.n2 { grid-template-columns: 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+    .grid.n3 { grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); }
+    .grid.n4 { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  }
+
+  .card { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+    container-type: size; transition: border-color .3s; }
+  .card:active { border-color: rgba(228,228,231,.5); }
+  .corner { position: absolute; width: 8px; height: 8px; border-color: rgba(228,228,231,.3); border-style: solid; border-width: 0; }
+  .tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; } .tr { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+  .bl { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; } .br { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    padding: min(4cqh, 3cqw) min(4cqh, 4cqw) min(2cqh, 2cqw); }
+  .label { font-size: clamp(8px, min(3.6cqh, 2.6cqw), 14px); color: var(--secondary); letter-spacing: .15em; text-transform: uppercase; }
+  .title { font-size: clamp(11px, min(7cqh, 5cqw), 30px); font-weight: 700; color: #fff; letter-spacing: -.02em; line-height: 1.15;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: .35em; }
+  .title img { height: 1em; width: 1em; object-fit: contain; }
+  .right { text-align: right; flex-shrink: 0; }
+  .big { font-size: clamp(11px, min(7cqh, 5cqw), 30px); font-weight: 700; color: #fff; line-height: 1.15; }
+
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 min(4cqh, 4cqw); }
+  .pills { height: max(22px, 10cqh); flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+    border-top: 1px solid var(--border); background: rgba(24,24,27,.5); }
+  .pill { font-size: clamp(8px, min(3.4cqh, 2.4cqw), 13px); padding: .15em .7em; border-radius: 4px; color: var(--dim); }
+  .pill.on { background: var(--primary); color: #000; font-weight: 700; }
+
+  .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: .6em; border-bottom: 1px solid rgba(39,39,42,.6);
+    font-size: clamp(8px, min(4.3cqh, 3.1cqw), 22px); white-space: nowrap; }
+  .row:last-child { border-bottom: 0; }
+  .crest { height: 1.15em; width: 1.15em; object-fit: contain; flex-shrink: 0; }
+  .muted { color: var(--secondary); } .dim { color: var(--dim); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* matchday rows */
+  .m-side { flex: 1; display: flex; align-items: center; gap: .5em; min-width: 0; overflow: hidden; }
+  .m-side.home { justify-content: flex-end; }
+  .m-mid { width: 6.8em; text-align: center; flex-shrink: 0; }
+  .score { font-weight: 700; color: #fff; }
+  .live .score { color: var(--live); }
+  .tag { font-size: .7em; padding: 0 .4em; border-radius: 3px; border: 1px solid currentColor; }
+  .tag.live { color: var(--live); animation: blink 1.4s infinite; }
+  .won { color: #fff; font-weight: 700; } .lost { color: var(--secondary); }
+
+  /* table rows */
+  .t-pos { width: 1.8em; text-align: right; color: var(--secondary); position: relative; }
+  .t-pos::before { content: ""; position: absolute; left: -.55em; top: 15%; bottom: 15%; width: 2px; border-radius: 1px; background: var(--zone, transparent); }
+  .t-team { flex: 1; min-width: 0; display: flex; align-items: center; gap: .5em; overflow: hidden; }
+  .t-col { width: 2.4em; text-align: right; } .t-pts { width: 2.6em; text-align: right; font-weight: 700; color: #fff; }
+  .row.me { background: rgba(250,250,250,.07); } .row.me .t-team { color: #fff; font-weight: 700; }
+  .row.hdr { flex: .7; font-size: clamp(7px, min(3cqh, 2.2cqw), 12px); color: var(--dim); letter-spacing: .1em; }
+
+  /* team panel */
+  .stack { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; gap: 1cqh; }
+  .form { display: flex; gap: min(1.5cqh, 1.2cqw); }
+  .chip { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: clamp(18px, 13cqh, 64px); border-radius: 5px; border: 1px solid var(--border); font-weight: 700;
+    font-size: clamp(9px, min(5.5cqh, 3.6cqw), 26px); }
+  .chip small { font-size: .5em; font-weight: 400; color: var(--secondary); margin-top: .15em; }
+  .chip.W { color: var(--win); border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.07); }
+  .chip.D { color: var(--draw); }
+  .chip.L { color: var(--loss); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.07); }
+  .chip.empty { color: var(--dim); border-style: dashed; }
+  .line { font-size: clamp(8px, min(4.3cqh, 3.1cqw), 20px); display: flex; align-items: center; gap: .5em; white-space: nowrap; overflow: hidden; }
+  .line .k { color: var(--secondary); width: 4.2em; flex-shrink: 0; letter-spacing: .1em; font-size: .8em; }
+  .splits { flex: 1; min-height: 0; display: grid; grid-template-columns: auto 1fr 1fr; align-content: space-evenly;
+    column-gap: 1em; row-gap: .4em; font-size: clamp(8px, min(4.6cqh, 3.2cqw), 22px); }
+  .splits .h { color: var(--dim); font-size: .75em; letter-spacing: .12em; text-align: right; }
+  .splits .k { color: var(--secondary); font-size: .8em; letter-spacing: .1em; align-self: center; }
+  .splits .v { text-align: right; font-weight: 700; color: #fff; }
+  .splits .v.hl { font-size: 1.5em; }
+
+  /* race panel */
+  .chart { flex: 1; min-height: 0; position: relative; }
+  .legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .2em .8em; font-size: clamp(7px, min(3.2cqh, 2.3cqw), 13px); color: var(--secondary); }
+  .legend i { display: inline-block; width: .9em; height: 2px; vertical-align: middle; margin-right: .3em; }
+
+  .loader { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .loader::after { content: ""; width: 24px; height: 24px; border: 2px solid var(--primary); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+  .empty-msg { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--secondary);
+    font-size: clamp(9px, min(4cqh, 3cqw), 16px); padding: 1em; }
+
+  .foot { flex-shrink: 0; display: flex; justify-content: space-between; gap: 1em; color: var(--dim);
+    font-size: clamp(7px, 1.4vh, 11px); padding: 0 2px; white-space: nowrap; overflow: hidden; }
+  .foot .err { color: var(--loss); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="grid" class="grid"></div>
+  <div class="foot">
+    <span>Data: API-Football</span>
+    <span id="status">CONNECTING…</span>
+  </div>
+</div>
+
+<script>
+/* ───────────── CONFIG (URL params) ─────────────
+   ?team=JUV            team to follow: 3-letter code (JUV, INT, MIL, NAP…), team id, or name
+   ?panels=matchday,table,team,race   which panels, in order (1–4 of them)
+   ?api=https://…       backend base URL (default: your Render service)
+*/
+const params = new URLSearchParams(location.search);
+// Your Render backend (api-soccer). Override with ?api=… if it ever moves.
+const API = (params.get("api") || "https://soccer-jcbp.onrender.com").replace(/\/$/, "");
+const TEAM_Q = (params.get("team") || "JUV").trim();
+const ALL_PANELS = ["matchday", "table", "team", "race"];
+const PANELS = (params.get("panels") || ALL_PANELS.join(","))
+  .split(",").map(s => s.trim().toLowerCase()).filter(p => ALL_PANELS.includes(p)).slice(0, 4);
+if (!PANELS.length) PANELS.push(...ALL_PANELS);
+
+const VIEWS = {
+  matchday: [["cur", "CUR"], ["prev", "PREV"], ["next", "NEXT"]],
+  table: [["top", "1–10"], ["bottom", "11–20"]],
+  team: [["form", "FORM"], ["splits", "HOME/AWAY"]],
+  race: [["points", "POINTS"], ["position", "POSITION"]],
+};
+const state = { standings: null, matches: null, view: {}, updated: null, error: null, charts: {} };
+PANELS.forEach(p => state.view[p] = 0);
+
+const LIVE = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
+const DONE = new Set(["FINISHED", "AWARDED"]);
+
+/* ───────────── helpers ───────────── */
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const crest = t => t && t.crest ? `<img class="crest" src="${esc(t.crest)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : "";
+const tla = t => esc((t && (t.tla || t.shortName || t.name)) || "TBD");
+const fmt = (n, d = 2) => Number.isFinite(n) ? n.toFixed(d) : "–";
+const sign = n => (n > 0 ? "+" : "") + n;
+
+function kickoff(iso) {
+  const d = new Date(iso), now = new Date();
+  const days = (d - now) / 864e5;
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  if (d.toDateString() === now.toDateString()) return time;
+  if (days > -6 && days < 6) return `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+function table() {
+  const s = state.standings && state.standings.standings;
+  if (!s) return [];
+  return (s.find(x => x.type === "TOTAL") || s[0]).table || [];
+}
+function currentMatchday() {
+  return state.currentMatchday || (state.standings && state.standings.season && state.standings.season.currentMatchday)
+    || (state.matches && state.matches[0] && state.matches[0].season && state.matches[0].season.currentMatchday) || 1;
+}
+function followed() {
+  const q = TEAM_Q.toLowerCase();
+  const rows = table();
+  const r = rows.find(r => String(r.team.id) === q || (r.team.tla || "").toLowerCase() === q)
+    || rows.find(r => (r.team.shortName || "").toLowerCase() === q || (r.team.name || "").toLowerCase() === q)
+    || rows.find(r => (r.team.name || "").toLowerCase().includes(q) || (r.team.shortName || "").toLowerCase().includes(q));
+  return r || null;
+}
+function zone(pos, n) {
+  if (pos <= 4) return "var(--ucl)";
+  if (pos === 5) return "var(--uel)";
+  if (pos === 6) return "var(--uecl)";
+  if (pos > n - 3) return "var(--rel)";
+  return "transparent";
+}
+function resultFor(m, id) {
+  const h = m.score.fullTime.home, a = m.score.fullTime.away;
+  const home = m.homeTeam.id === id;
+  const gf = home ? h : a, ga = home ? a : h;
+  return { gf, ga, r: gf > ga ? "W" : gf < ga ? "L" : "D", home, opp: home ? m.awayTeam : m.homeTeam };
+}
+
+/* ───────────── panels ───────────── */
+function shell(id, inner) {
+  return `<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>${inner}
+    <div class="pills">${VIEWS[id].map(([, lbl], i) => `<span class="pill ${i === state.view[id] ? "on" : ""}">${lbl}</span>`).join("")}</div>`;
+}
+
+function renderMatchday() {
+  const v = VIEWS.matchday[state.view.matchday][0];
+  const cur = currentMatchday();
+  const md = Math.max(1, v === "prev" ? cur - 1 : v === "next" ? cur + 1 : cur);
+  const list = (state.matches || []).filter(m => m.matchday === md).sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+  const live = list.filter(m => LIVE.has(m.status)).length;
+  const done = list.filter(m => DONE.has(m.status)).length;
+  const right = live ? `<span class="tag live">● ${live} LIVE</span>` : `<span class="muted">${done}/${list.length || 10} PLAYED</span>`;
+
+  const rows = list.length ? list.map(m => {
+    let mid, cls = "";
+    const h = m.score.fullTime.home, a = m.score.fullTime.away;
+    if (LIVE.has(m.status)) { cls = "live"; mid = `<span class="score num">${h ?? 0}–${a ?? 0}</span> <span class="tag live">${m.status === "PAUSED" ? "HT" : m.minute ? m.minute + "'" : "LIVE"}</span>`; }
+    else if (DONE.has(m.status)) mid = `<span class="score num">${h}–${a}</span>`;
+    else if (m.status === "POSTPONED") mid = `<span class="dim">PST</span>`;
+    else mid = `<span class="muted">${kickoff(m.utcDate)}</span>`;
+    const hw = DONE.has(m.status) ? (h > a ? "won" : h < a ? "lost" : "") : "";
+    const aw = DONE.has(m.status) ? (a > h ? "won" : a < h ? "lost" : "") : "";
+    return `<div class="row ${cls}">
+      <div class="m-side home ${hw}">${tla(m.homeTeam)} ${crest(m.homeTeam)}</div>
+      <div class="m-mid">${mid}</div>
+      <div class="m-side ${aw}">${crest(m.awayTeam)} ${tla(m.awayTeam)}</div></div>`;
+  }).join("") : `<div class="empty-msg">No matches for matchday ${md}</div>`;
+
+  return shell("matchday", `
+    <div class="head"><div><div class="label">Serie A</div><div class="title">MATCHDAY ${md}</div></div>
+      <div class="right label">${right}</div></div>
+    <div class="body">${rows}</div>`);
+}
+
+function renderTable() {
+  const rows = table();
+  const bottom = VIEWS.table[state.view.table][0] === "bottom";
+  const slice = bottom ? rows.slice(10, 20) : rows.slice(0, 10);
+  const me = followed();
+  const body = `<div class="row hdr"><span class="t-pos">#</span><span class="t-team">CLUB</span><span class="t-col">P</span><span class="t-col">GD</span><span class="t-pts">PTS</span></div>` +
+    slice.map(r => `<div class="row ${me && me.team.id === r.team.id ? "me" : ""}">
+      <span class="t-pos num" style="--zone:${zone(r.position, rows.length)}">${r.position}</span>
+      <span class="t-team">${crest(r.team)}<span>${esc(r.team.shortName || r.team.name)}</span></span>
+      <span class="t-col num muted">${r.playedGames}</span>
+      <span class="t-col num muted">${sign(r.goalDifference)}</span>
+      <span class="t-pts num">${r.points}</span></div>`).join("");
+  const leader = rows[0];
+  return shell("table", `
+    <div class="head"><div><div class="label">Standings</div><div class="title">SERIE A</div></div>
+      <div class="right"><div class="label">Leader</div><div class="big">${leader ? tla(leader.team) + " " + leader.points : "–"}</div></div></div>
+    <div class="body">${body}</div>`);
+}
+
+function teamStats(id) {
+  const ms = (state.matches || []).filter(m => (m.homeTeam.id === id || m.awayTeam.id === id));
+  const played = ms.filter(m => DONE.has(m.status)).sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+  const s = { home: { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }, away: { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 } };
+  played.forEach(m => {
+    const r = resultFor(m, id), b = r.home ? s.home : s.away;
+    b.p++; b.gf += r.gf; b.ga += r.ga;
+    if (r.r === "W") { b.w++; b.pts += 3; } else if (r.r === "D") { b.d++; b.pts += 1; } else b.l++;
+  });
+  const live = ms.find(m => LIVE.has(m.status));
+  const next = ms.filter(m => !DONE.has(m.status) && !LIVE.has(m.status) && m.status !== "POSTPONED" && m.status !== "CANCELLED")
+    .sort((a, b) => a.utcDate.localeCompare(b.utcDate))[0];
+  return { played, last5: played.slice(-5), live, next, s };
+}
+
+function renderTeam() {
+  const me = followed();
+  if (!me) return shell("team", `<div class="head"><div><div class="label">Your team</div><div class="title">NOT FOUND</div></div></div>
+    <div class="empty-msg">No team matches "${esc(TEAM_Q)}". Use a 3-letter code like ?team=JUV</div>`);
+  const id = me.team.id, st = teamStats(id);
+  const view = VIEWS.team[state.view.team][0];
+  const head = `<div class="head"><div><div class="label">Your team</div><div class="title">${crest(me.team)}${esc(me.team.shortName || me.team.name)}</div></div>
+    <div class="right"><div class="label">#${me.position} · ${me.playedGames}P</div><div class="big num">${me.points} PTS</div></div></div>`;
+
+  let body;
+  if (view === "form") {
+    const chips = [];
+    for (let i = 0; i < 5; i++) {
+      const m = st.last5[i];
+      if (!m) { chips.push(`<div class="chip empty">–</div>`); continue; }
+      const r = resultFor(m, id);
+      chips.push(`<div class="chip ${r.r}">${r.r}<small>${r.gf}-${r.ga} ${tla(r.opp)}</small></div>`);
+    }
+    let nextLine = `<span class="dim">No upcoming match</span>`;
+    if (st.live) {
+      const r = resultFor(st.live, id);
+      nextLine = `<span class="tag live">${st.live.status === "PAUSED" ? "HT" : st.live.minute ? st.live.minute + "'" : "LIVE"}</span> ${r.home ? "vs" : "@"} ${crest(r.opp)} ${tla(r.opp)} <span class="score num" style="color:var(--live)">${r.gf ?? 0}–${r.ga ?? 0}</span>`;
+    } else if (st.next) {
+      const home = st.next.homeTeam.id === id, opp = home ? st.next.awayTeam : st.next.homeTeam;
+      nextLine = `${home ? "vs" : "@"} ${crest(opp)} <b>${esc(opp.shortName || opp.name || "TBD")}</b> <span class="muted">${kickoff(st.next.utcDate)}</span>`;
+    }
+    const lead = table()[0];
+    const gap = lead && lead.team.id !== id ? `${lead.points - me.points} pts behind ${tla(lead.team)}` : "Top of the table";
+    body = `<div class="stack">
+      <div class="form">${chips.join("")}</div>
+      <div class="line"><span class="k">NEXT</span>${nextLine}</div>
+      <div class="line"><span class="k">GAP</span><span>${gap}</span></div>
+      <div class="line"><span class="k">GOALS</span><span class="num">${me.goalsFor} for · ${me.goalsAgainst} against (${sign(me.goalDifference)})</span></div>
+    </div>`;
+  } else {
+    const h = st.s.home, a = st.s.away, per = (x, n) => n ? x / n : NaN;
+    body = `<div class="splits">
+      <span></span><span class="h">HOME</span><span class="h">AWAY</span>
+      <span class="k">PPG</span><span class="v hl num">${fmt(per(h.pts, h.p))}</span><span class="v hl num">${fmt(per(a.pts, a.p))}</span>
+      <span class="k">W-D-L</span><span class="v num">${h.w}-${h.d}-${h.l}</span><span class="v num">${a.w}-${a.d}-${a.l}</span>
+      <span class="k">GF/G</span><span class="v num">${fmt(per(h.gf, h.p))}</span><span class="v num">${fmt(per(a.gf, a.p))}</span>
+      <span class="k">GA/G</span><span class="v num">${fmt(per(h.ga, h.p))}</span><span class="v num">${fmt(per(a.ga, a.p))}</span>
+    </div>`;
+  }
+  return shell("team", head + `<div class="body">${body}</div>`);
+}
+
+/* points / position by matchday for the top 4 + your team */
+function raceData() {
+  const rows = table(); if (!rows.length || !state.matches) return null;
+  const me = followed();
+  const ids = rows.slice(0, 4).map(r => r.team.id);
+  if (me && !ids.includes(me.team.id)) ids.push(me.team.id);
+  const all = rows.map(r => r.team.id);
+  const done = state.matches.filter(m => DONE.has(m.status));
+  const maxMd = Math.max(0, ...done.map(m => m.matchday));
+  const tot = {}; all.forEach(id => tot[id] = { pts: 0, gd: 0, gf: 0 });
+  const pts = {}, pos = {}; ids.forEach(id => { pts[id] = []; pos[id] = []; });
+  for (let md = 1; md <= maxMd; md++) {
+    done.filter(m => m.matchday === md).forEach(m => {
+      const h = m.score.fullTime.home, a = m.score.fullTime.away, H = tot[m.homeTeam.id], A = tot[m.awayTeam.id];
+      if (!H || !A) return;
+      H.gf += h; A.gf += a; H.gd += h - a; A.gd += a - h;
+      if (h > a) H.pts += 3; else if (h < a) A.pts += 3; else { H.pts++; A.pts++; }
+    });
+    const order = [...all].sort((x, y) => tot[y].pts - tot[x].pts || tot[y].gd - tot[x].gd || tot[y].gf - tot[x].gf);
+    ids.forEach(id => { pts[id].push(tot[id].pts); pos[id].push(order.indexOf(id) + 1); });
+  }
+  const labels = Array.from({ length: maxMd }, (_, i) => i + 1);
+  const teams = ids.map(id => rows.find(r => r.team.id === id).team);
+  return { labels, teams, pts, pos, meId: me && me.team.id };
+}
+
+const SHADES = ["#e4e4e7", "#a1a1aa", "#71717a", "#52525b"];
+function raceColor(team, i, meId) { return team.id === meId ? "#4ade80" : SHADES[i % SHADES.length]; }
+
+function renderRace() {
+  const d = raceData();
+  const view = VIEWS.race[state.view.race][0];
+  const legend = d ? d.teams.map((t, i) => `<span><i style="background:${raceColor(t, i, d.meId)}"></i>${tla(t)}</span>`).join("") : "";
+  return shell("race", `
+    <div class="head"><div><div class="label">Title race</div><div class="title">${view === "points" ? "POINTS" : "POSITION"}</div></div>
+      <div class="legend">${legend}</div></div>
+    <div class="body"><div class="chart"><canvas id="race-canvas"></canvas></div></div>`);
+}
+
+function drawRaceChart() {
+  const cv = document.getElementById("race-canvas");
+  if (state.charts.race) { state.charts.race.destroy(); state.charts.race = null; }
+  if (!cv || typeof Chart === "undefined") return;
+  const d = raceData(); if (!d || !d.labels.length) return;
+  const posView = VIEWS.race[state.view.race][0] === "position";
+  const fs = Math.max(8, Math.min(13, cv.parentElement.clientHeight / 22));
+  state.charts.race = new Chart(cv, {
+    type: "line",
+    data: {
+      labels: d.labels,
+      datasets: d.teams.map((t, i) => ({
+        label: t.tla, data: posView ? d.pos[t.id] : d.pts[t.id],
+        borderColor: raceColor(t, i, d.meId), borderWidth: t.id === d.meId ? 2.5 : 1.5,
+        pointRadius: 0, tension: posView ? 0 : 0.25, stepped: posView ? "middle" : false,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, events: [],
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { grid: { color: "#27272a" }, ticks: { color: "#71717a", font: { family: "JetBrains Mono", size: fs }, maxTicksLimit: 8, maxRotation: 0 } },
+        y: { reverse: posView, min: posView ? 1 : undefined, max: posView ? 20 : undefined,
+          grid: { color: "#27272a" }, ticks: { color: "#71717a", font: { family: "JetBrains Mono", size: fs }, maxTicksLimit: 5, precision: 0 } },
+      },
+    },
+  });
+}
+
+const RENDER = { matchday: renderMatchday, table: renderTable, team: renderTeam, race: renderRace };
+
+/* ───────────── grid ───────────── */
+function initGrid() {
+  const grid = document.getElementById("grid");
+  grid.className = "grid n" + PANELS.length;
+  grid.innerHTML = PANELS.map(p => `<div class="card" id="card-${p}"><div class="loader"></div></div>`).join("");
+  document.getElementById("status").textContent = "WAKING SERVER… (can take ~1 min)";
+  PANELS.forEach(p => document.getElementById("card-" + p).addEventListener("click", () => {
+    state.view[p] = (state.view[p] + 1) % VIEWS[p].length;
+    renderPanel(p);
+  }));
+}
+function renderPanel(p) {
+  if (!state.standings || !state.matches) return;
+  document.getElementById("card-" + p).innerHTML = RENDER[p]();
+  if (p === "race") drawRaceChart();
+}
+function renderAll() { PANELS.forEach(renderPanel); renderStatus(); }
+
+function renderStatus() {
+  const el = document.getElementById("status");
+  const t = state.updated ? state.updated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–";
+  el.innerHTML = state.error ? `<span class="err">OFFLINE · retrying</span> · last ${t}` : `UPDATED ${t}`;
+}
+
+/* ───────────── data ───────────── */
+/* ───────────── API-Football → widget shape ───────────── */
+// Converts API-Football (api-sports.io v3) responses into the simple shape the widget uses.
+// Already-normalized data (or football-data.org v4 shape) passes through unchanged.
+
+const AF_DONE = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
+const AF_LIVE = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
+const AF_OFF = new Set(["PST", "CANC", "ABD", "SUSP"]);
+
+// API-Football has no 3-letter codes in fixtures/standings, so map Serie A names.
+const CODES = {
+  "juventus": "JUV", "inter": "INT", "ac milan": "MIL", "milan": "MIL", "napoli": "NAP", "as roma": "ROM", "roma": "ROM",
+  "lazio": "LAZ", "atalanta": "ATA", "fiorentina": "FIO", "bologna": "BOL", "torino": "TOR", "udinese": "UDI",
+  "genoa": "GEN", "cagliari": "CAG", "lecce": "LEC", "parma": "PAR", "como": "COM", "verona": "VER",
+  "hellas verona": "VER", "sassuolo": "SAS", "cremonese": "CRE", "pisa": "PIS", "empoli": "EMP", "monza": "MON",
+  "venezia": "VEN", "salernitana": "SAL", "frosinone": "FRO", "sampdoria": "SAM", "spezia": "SPE", "palermo": "PAL",
+  "bari": "BAR", "brescia": "BRE", "benevento": "BEN", "spal": "SPA", "crotone": "CRO",
+};
+function code(name) {
+  const n = String(name || "").toLowerCase().trim();
+  if (CODES[n]) return CODES[n];
+  const stripped = n.replace(/^(ac|as|ss|us|fc|ssc|acf|uc)\s+/, "").replace(/\s+(fc|calcio|1913|1907)$/, "");
+  return CODES[stripped] || stripped.replace(/[^a-z]/g, "").slice(0, 3).toUpperCase() || "TBD";
+}
+const team = t => ({ id: t.id, name: t.name, shortName: t.name, tla: code(t.name), crest: t.logo || "" });
+
+/** Throws if API-Football answered 200 but with an error (quota hit, plan restriction, bad params). */
+function assertOk(json) {
+  const e = json && json.errors;
+  const hasErr = e && (Array.isArray(e) ? e.length : Object.keys(e).length);
+  if (hasErr) throw new Error("API-Football: " + JSON.stringify(e));
+  if (json && Array.isArray(json.response) && json.response.length === 0) throw new Error("API-Football: empty response");
+}
+
+function normalizeMatches(json) {
+  if (!json || !Array.isArray(json.response)) return json; // not API-Football → pass through
+  const matches = json.response.map(f => {
+    const st = f.fixture.status.short;
+    const round = Number(String(f.league.round || "").match(/(\d+)\s*$/)?.[1]) || 0;
+    return {
+      id: f.fixture.id,
+      matchday: round,
+      utcDate: new Date(f.fixture.date).toISOString(),
+      status: AF_DONE.has(st) ? "FINISHED" : AF_LIVE.has(st) ? (st === "HT" ? "PAUSED" : "IN_PLAY")
+        : AF_OFF.has(st) ? "POSTPONED" : "TIMED",
+      minute: AF_LIVE.has(st) ? f.fixture.status.elapsed : null,
+      homeTeam: team(f.teams.home),
+      awayTeam: team(f.teams.away),
+      score: { fullTime: { home: f.goals.home, away: f.goals.away } },
+    };
+  });
+  return { matches, currentMatchday: currentRound(matches) };
+}
+
+// The round to show by default: the one in progress, the one that just ended (within 36h), or the next one.
+function currentRound(ms) {
+  const played = ms.filter(m => m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED");
+  if (!played.length) return 1;
+  const last = Math.max(...played.map(m => m.matchday));
+  const inLast = ms.filter(m => m.matchday === last);
+  if (inLast.some(m => m.status === "TIMED" || m.status === "IN_PLAY" || m.status === "PAUSED")) return last;
+  const lastKick = Math.max(...inLast.filter(m => m.status === "FINISHED").map(m => Date.parse(m.utcDate)));
+  return Date.now() - lastKick < 36 * 3600e3 ? last : last + 1;
+}
+
+function normalizeStandings(json) {
+  if (!json || !Array.isArray(json.response)) return json;
+  const groups = json.response[0]?.league?.standings || [];
+  const rows = (groups[0] || []).map(r => ({
+    position: r.rank,
+    team: team(r.team),
+    playedGames: r.all.played,
+    won: r.all.win, draw: r.all.draw, lost: r.all.lose,
+    points: r.points,
+    goalsFor: r.all.goals.for, goalsAgainst: r.all.goals.against,
+    goalDifference: r.goalsDiff,
+  }));
+  return { standings: [{ type: "TOTAL", table: rows }] };
+}
+
+async function getJSON(path) {
+  // Render's free tier can take ~1 min to wake up, so allow a long wait.
+  const r = await fetch(API + path, { cache: "no-store", signal: AbortSignal.timeout(90e3) });
+  if (!r.ok) throw new Error(path + " → " + r.status);
+  const json = await r.json();
+  assertOk(json);
+  return json;
+}
+async function refresh() {
+  try {
+    const [rawStandings, rawFixtures] = await Promise.all([getJSON("/api/widget/standings"), getJSON("/api/widget/fixtures")]);
+    const standings = normalizeStandings(rawStandings), matches = normalizeMatches(rawFixtures);
+    state.standings = standings;
+    state.matches = matches.matches || [];
+    state.currentMatchday = matches.currentMatchday || null;
+    state.updated = new Date(); state.error = null;
+    renderAll();
+  } catch (e) {
+    console.warn(e);
+    state.error = e.message;
+    if (!state.standings) PANELS.forEach(p => document.getElementById("card-" + p).innerHTML =
+      `<div class="empty-msg">Can't reach the data API.<br>Retrying in a minute…</div>`);
+    renderStatus();
+  }
+  schedule();
+}
+// Poll every minute around match time, every 5 minutes otherwise.
+function schedule() {
+  const now = Date.now();
+  const busy = (state.matches || []).some(m => LIVE.has(m.status) ||
+    (!DONE.has(m.status) && Math.abs(new Date(m.utcDate) - now) < 2.5 * 36e5 && new Date(m.utcDate) - now < 15 * 6e4));
+  // Every 2 min around match time, 5 min otherwise. This also keeps Render awake
+  // while the widget is open; Render's cache decides how often API-Football is called.
+  setTimeout(refresh, state.error ? 60e3 : busy ? 120e3 : 300e3);
+}
+
+// Redraw the chart when the iCUE slot is resized
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => PANELS.includes("race") && renderPanel("race"), 200); });
+
+initGrid();
+refresh();
+</script>
+</body>
+</html>
