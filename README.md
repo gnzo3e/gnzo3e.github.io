@@ -7,7 +7,7 @@ Widgets for the Corsair Xeneon Edge, made for iCUE's iFrame widget. Paste the UR
 ### Serie A
 
 ```
-https://gnzo3e.github.io/xeneon-edge/serie-a/?team=JUV
+<iframe src="https://gnzo3e.github.io/xeneon-edge/serie-a/?team=inter"></iframe>
 ```
 
 | Param | Example | Meaning |
