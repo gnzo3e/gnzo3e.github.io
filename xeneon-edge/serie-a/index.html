@@ -42,6 +42,14 @@
     .grid.n3 { grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); }
     .grid.n4 { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(0, 1fr)); }
   }
+  /* Automatic layouts per iCUE slot (no ?panels=): set by slotLayout(), one card per column (or row
+     when the slot is vertical). --cw scales width-bound text so narrower cards read like XL's. */
+  .grid.auto { grid-template-rows: 1fr; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+  .grid.auto.vertical { grid-template-columns: 1fr; grid-template-rows: repeat(var(--cols), minmax(0, 1fr)); }
+  .card { --cw: 1; }
+  .grid.slot-l .card { --cw: 1.12; }  /* 3 cards ≈ 553px wide vs XL's 625px */
+  .grid.slot-m .card { --cw: 1.5; }   /* 2 cards ≈ 410px wide */
+  .pill.sep { padding: 0; width: 1px; align-self: stretch; margin: .5em .2em; background: var(--border); }
 
   .card { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
     background: var(--card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
@@ -53,21 +61,21 @@
 
   .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
     padding: min(4cqh, 3cqw) min(4cqh, 4cqw) min(2cqh, 2cqw); }
-  .label { font-size: clamp(8px, min(3.6cqh, 2.6cqw), 14px); color: var(--secondary); letter-spacing: .15em; text-transform: uppercase; }
-  .title { font-size: clamp(11px, min(7cqh, 5cqw), 30px); font-weight: 700; color: #fff; letter-spacing: -.02em; line-height: 1.15;
+  .label { font-size: clamp(8px, min(3.6cqh, calc(2.6cqw * var(--cw))), 14px); color: var(--secondary); letter-spacing: .15em; text-transform: uppercase; }
+  .title { font-size: clamp(11px, min(7cqh, calc(5cqw * var(--cw))), 30px); font-weight: 700; color: #fff; letter-spacing: -.02em; line-height: 1.15;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: .35em; }
   .title img { height: 1em; width: 1em; object-fit: contain; }
   .right { text-align: right; flex-shrink: 0; }
-  .big { font-size: clamp(11px, min(7cqh, 5cqw), 30px); font-weight: 700; color: #fff; line-height: 1.15; }
+  .big { font-size: clamp(11px, min(7cqh, calc(5cqw * var(--cw))), 30px); font-weight: 700; color: #fff; line-height: 1.15; }
 
   .body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 min(4cqh, 4cqw); }
   .pills { height: max(22px, 10cqh); flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
     border-top: 1px solid var(--border); background: rgba(24,24,27,.5); }
-  .pill { font-size: clamp(8px, min(3.4cqh, 2.4cqw), 13px); padding: .15em .7em; border-radius: 4px; color: var(--dim); }
+  .pill { font-size: clamp(8px, min(3.4cqh, calc(2.4cqw * var(--cw))), 13px); padding: .15em .7em; border-radius: 4px; color: var(--dim); }
   .pill.on { background: var(--primary); color: #000; font-weight: 700; }
 
   .row { flex: 1; min-height: 0; display: flex; align-items: center; gap: .6em; border-bottom: 1px solid rgba(39,39,42,.6);
-    font-size: clamp(8px, min(4.3cqh, 3.1cqw), 22px); white-space: nowrap; }
+    font-size: clamp(8px, min(4.3cqh, calc(3.1cqw * var(--cw))), 22px); white-space: nowrap; }
   .row:last-child { border-bottom: 0; }
   .crest { height: 1.15em; width: 1.15em; object-fit: contain; flex-shrink: 0; }
   .muted { color: var(--secondary); } .dim { color: var(--dim); }
@@ -89,23 +97,23 @@
   .t-team { flex: 1; min-width: 0; display: flex; align-items: center; gap: .5em; overflow: hidden; }
   .t-col { width: 2.4em; text-align: right; } .t-pts { width: 2.6em; text-align: right; font-weight: 700; color: #fff; }
   .row.me { background: rgba(250,250,250,.07); } .row.me .t-team { color: #fff; font-weight: 700; }
-  .row.hdr { flex: .7; font-size: clamp(7px, min(3cqh, 2.2cqw), 12px); color: var(--dim); letter-spacing: .1em; }
+  .row.hdr { flex: .7; font-size: clamp(7px, min(3cqh, calc(2.2cqw * var(--cw))), 12px); color: var(--dim); letter-spacing: .1em; }
 
   /* team panel */
   .stack { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; gap: 1cqh; }
   .form { display: flex; gap: min(1.5cqh, 1.2cqw); }
   .chip { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     height: clamp(18px, 13cqh, 64px); border-radius: 5px; border: 1px solid var(--border); font-weight: 700;
-    font-size: clamp(9px, min(5.5cqh, 3.6cqw), 26px); }
+    font-size: clamp(9px, min(5.5cqh, calc(3.6cqw * var(--cw))), 26px); }
   .chip small { font-size: .5em; font-weight: 400; color: var(--secondary); margin-top: .15em; }
   .chip.W { color: var(--win); border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.07); }
   .chip.D { color: var(--draw); }
   .chip.L { color: var(--loss); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.07); }
   .chip.empty { color: var(--dim); border-style: dashed; }
-  .line { font-size: clamp(8px, min(4.3cqh, 3.1cqw), 20px); display: flex; align-items: center; gap: .5em; white-space: nowrap; overflow: hidden; }
+  .line { font-size: clamp(8px, min(4.3cqh, calc(3.1cqw * var(--cw))), 20px); display: flex; align-items: center; gap: .5em; white-space: nowrap; overflow: hidden; }
   .line .k { color: var(--secondary); width: 4.2em; flex-shrink: 0; letter-spacing: .1em; font-size: .8em; }
   .splits { flex: 1; min-height: 0; display: grid; grid-template-columns: auto 1fr 1fr; align-content: space-evenly;
-    column-gap: 1em; row-gap: .4em; font-size: clamp(8px, min(4.6cqh, 3.2cqw), 22px); }
+    column-gap: 1em; row-gap: .4em; font-size: clamp(8px, min(4.6cqh, calc(3.2cqw * var(--cw))), 22px); }
   .splits .h { color: var(--dim); font-size: .75em; letter-spacing: .12em; text-align: right; }
   .splits .k { color: var(--secondary); font-size: .8em; letter-spacing: .1em; align-self: center; }
   .splits .v { text-align: right; font-weight: 700; color: #fff; }
@@ -113,13 +121,13 @@
 
   /* race panel */
   .chart { flex: 1; min-height: 0; position: relative; }
-  .legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .2em .8em; font-size: clamp(7px, min(3.2cqh, 2.3cqw), 13px); color: var(--secondary); }
+  .legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .2em .8em; font-size: clamp(7px, min(3.2cqh, calc(2.3cqw * var(--cw))), 13px); color: var(--secondary); }
   .legend i { display: inline-block; width: .9em; height: 2px; vertical-align: middle; margin-right: .3em; }
 
   .loader { flex: 1; display: flex; align-items: center; justify-content: center; }
   .loader::after { content: ""; width: 24px; height: 24px; border: 2px solid var(--primary); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
   .empty-msg { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--secondary);
-    font-size: clamp(9px, min(4cqh, 3cqw), 16px); padding: 1em; }
+    font-size: clamp(9px, min(4cqh, calc(3cqw * var(--cw))), 16px); padding: 1em; }
 
   .foot { flex-shrink: 0; display: flex; justify-content: space-between; gap: 1em; color: var(--dim);
     font-size: clamp(7px, 1.4vh, 11px); padding: 0 2px; white-space: nowrap; overflow: hidden; }
@@ -132,15 +140,15 @@
   .picker { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: min(2cqh, 2cqw);
     padding: min(4cqh, 4cqw); background: rgba(9,9,11,.97); }
   .picker-head { display: flex; justify-content: space-between; align-items: center; }
-  .picker-x { font-size: clamp(12px, min(6cqh, 4cqw), 26px); color: var(--secondary); padding: 0 .3em; }
+  .picker-x { font-size: clamp(12px, min(6cqh, calc(4cqw * var(--cw))), 26px); color: var(--secondary); padding: 0 .3em; }
   /* rows share the card's height (no scrolling on the Edge); they only scroll if a slot is too small */
   .opts { flex: 1; min-height: 0; display: grid; gap: min(1.5cqh, 1.2cqw); overflow-y: auto;
     grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(18px, 1fr); }
   .opts.league { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(28px, 1fr); }
   .opt { display: flex; align-items: center; justify-content: center; gap: .45em; min-width: 0; padding: 0 .5em;
     border: 1px solid var(--border); border-radius: 5px; background: var(--card); color: var(--primary); cursor: pointer;
-    font: inherit; font-size: clamp(8px, min(4.2cqh, 2.6cqw), 20px); white-space: nowrap; overflow: hidden; }
-  .opts.league .opt { font-size: clamp(10px, min(7cqh, 3.6cqw), 28px); font-weight: 700; white-space: normal; text-align: center; line-height: 1.2; }
+    font: inherit; font-size: clamp(8px, min(4.2cqh, calc(2.6cqw * var(--cw))), 20px); white-space: nowrap; overflow: hidden; }
+  .opts.league .opt { font-size: clamp(10px, min(7cqh, calc(3.6cqw * var(--cw))), 28px); font-weight: 700; white-space: normal; text-align: center; line-height: 1.2; }
   .opt span { overflow: hidden; text-overflow: ellipsis; }
   .opt.on { background: var(--primary); color: #000; font-weight: 700; border-color: var(--primary); }
   @container (max-aspect-ratio: 5/4) { .opts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -187,9 +195,31 @@ const store = {
 };
 const PREFS = "xeneon-football:" + location.pathname + location.search + ":";
 const ALL_PANELS = ["matchday", "table", "team", "race"];
-const PANELS = (params.get("panels") || ALL_PANELS.join(","))
+const EXPLICIT_PANELS = (params.get("panels") || "")
   .split(",").map(s => s.trim().toLowerCase()).filter(p => ALL_PANELS.includes(p)).slice(0, 4);
-if (!PANELS.length) PANELS.push(...ALL_PANELS);
+// With ?panels=, every listed panel gets its own card (the old behaviour). Without it, the layout
+// follows the iCUE slot: each card holds one or more panels, and tapping a card steps through
+// every view of every panel in it.
+const PANELS = EXPLICIT_PANELS.length ? EXPLICIT_PANELS : ALL_PANELS;
+let CARDS = PANELS.map(p => [p]);
+let LAYOUT = "";
+
+/* Xeneon Edge iCUE slots (horizontal): S 840×344, M 840×696, L 1688×696, XL 2536×696
+   (vertical: the same sizes turned on their side). */
+function slotLayout() {
+  if (EXPLICIT_PANELS.length) return { key: "explicit", cls: "n" + PANELS.length, cards: PANELS.map(p => [p]) };
+  const w = innerWidth, h = innerHeight, a = w / h;
+  const four = [["matchday"], ["table"], ["team"], ["race"]];
+  const three = [["matchday"], ["table"], ["team", "race"]];
+  const two = [["matchday", "team"], ["table", "race"]];
+  if (a >= 3) return { key: "xl", cls: "auto slot-xl", cards: four };
+  if (a >= 1.8) return h >= 500 ? { key: "l", cls: "auto slot-l", cards: three } : { key: "s", cls: "auto slot-s", cards: two };
+  if (a >= 1) return { key: "m", cls: "auto slot-m", cards: two };
+  const r = h / w; // vertical slots: stack the cards
+  if (r >= 3) return { key: "xlv", cls: "auto vertical", cards: four };
+  if (r >= 1.8) return { key: "lv", cls: "auto vertical", cards: three };
+  return { key: "mv", cls: "auto vertical", cards: two };
+}
 const ROTATE_MS = (() => { const n = Number(params.get("rotate")); return n > 0 ? Math.max(5, n) * 1e3 : 0; })();
 
 const VIEWS = {
@@ -202,9 +232,11 @@ const savedLeague = store.get(PREFS + "league");
 const state = {
   league: LEAGUES.some(l => l.slug === savedLeague) ? savedLeague : URL_LEAGUE,
   teamId: null, picker: null,
-  standings: null, matches: null, view: {}, updated: null, error: null, charts: {},
+  standings: null, matches: null, view: {}, active: [], updated: null, error: null, charts: {},
 };
 PANELS.forEach(p => state.view[p] = 0);
+const cardIndex = p => CARDS.findIndex(c => c.includes(p));
+const activePanel = i => CARDS[i][state.active[i] || 0];
 const league = () => LEAGUES.find(l => l.slug === state.league);
 function loadTeamPref() {
   const v = Number(store.get(PREFS + "team:" + state.league));
@@ -285,8 +317,16 @@ function resultFor(m, id) {
 /* ───────────── panels ───────────── */
 function shell(id, inner) {
   return `<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>${inner}
-    <div class="pills">${VIEWS[id].map(([, lbl], i) => `<span class="pill ${i === state.view[id] ? "on" : ""}">${typeof lbl === "function" ? lbl() : lbl}</span>`).join("")}</div>
+    <div class="pills">${pillsHtml(id)}</div>
     ${pickerHtml(id)}`;
+}
+
+// Every view of every panel in the card, with a divider between panels; the one on screen is lit.
+function pillsHtml(id) {
+  const card = CARDS[cardIndex(id)] || [id];
+  return card.map(q => VIEWS[q].map(([, lbl], i) =>
+    `<span class="pill ${q === id && i === state.view[q] ? "on" : ""}">${typeof lbl === "function" ? lbl() : lbl}</span>`).join(""))
+    .join(`<span class="pill sep"></span>`);
 }
 
 // The open menu (state.picker = { panel, kind }) is part of its card's render, so refreshes keep it open.
@@ -490,24 +530,41 @@ function drawRaceChart() {
 const RENDER = { matchday: renderMatchday, table: renderTable, team: renderTeam, race: renderRace };
 
 /* ───────────── grid ───────────── */
+// Builds the cards for the current slot size. Returns false if the layout didn't change.
 function initGrid() {
+  const l = slotLayout();
+  if (l.key === LAYOUT) return false;
+  LAYOUT = l.key; CARDS = l.cards;
+  state.active = CARDS.map(() => 0);
+  state.picker = null;
+  if (state.charts.race) { state.charts.race.destroy(); state.charts.race = null; }
   const grid = document.getElementById("grid");
-  grid.className = "grid n" + PANELS.length;
-  grid.innerHTML = PANELS.map(p => `<div class="card" id="card-${p}"><div class="loader"></div></div>`).join("");
-  document.getElementById("status").textContent = "WAKING SERVER… (can take ~1 min)";
-  PANELS.forEach(p => document.getElementById("card-" + p).addEventListener("click", e => onCardTap(p, e)));
+  grid.className = "grid " + l.cls;
+  grid.style.setProperty("--cols", CARDS.length);
+  grid.innerHTML = CARDS.map((c, i) => `<div class="card" id="card-${i}" data-panels="${c.join(" ")}"><div class="loader"></div></div>`).join("");
+  CARDS.forEach((c, i) => document.getElementById("card-" + i).addEventListener("click", e => onCardTap(i, e)));
+  return true;
 }
-function onCardTap(p, e) {
-  const t = e.target;
+// Next view: the active panel's next view, then on to the card's next panel.
+function advanceCard(i) {
+  const p = activePanel(i);
+  if (state.view[p] < VIEWS[p].length - 1) { state.view[p]++; return; }
+  state.view[p] = 0;
+  state.active[i] = ((state.active[i] || 0) + 1) % CARDS[i].length;
+  state.view[activePanel(i)] = 0;
+}
+function onCardTap(i, e) {
+  const p = activePanel(i), t = e.target;
   const lg = t.closest("[data-league]"), tm = t.closest("[data-team]"), pick = t.closest("[data-pick]");
   if (lg) return setLeague(lg.dataset.league);
   if (tm) return setTeam(Number(tm.dataset.team));
   if (t.closest(".picker")) { state.picker = null; return renderPanel(p); } // ✕ or empty space closes the menu
   if (pick) { state.picker = { panel: p, kind: pick.dataset.pick }; return renderPanel(p); }
-  state.view[p] = (state.view[p] + 1) % VIEWS[p].length;
-  renderPanel(p);
+  advanceCard(i);
+  renderPanel(activePanel(i));
   startRotate(); // a tap restarts the rotate timer so the view you picked stays up for a full period
 }
+function showInCards(html) { CARDS.forEach((c, i) => document.getElementById("card-" + i).innerHTML = html); }
 
 function setTeam(id) {
   state.teamId = id;
@@ -525,11 +582,12 @@ function setLeague(slug) {
   document.title = league().name + " Widget";
   Object.assign(state, { standings: null, matches: null, currentMatchday: null, updated: null, error: null, fromCache: false });
   PANELS.forEach(p => state.view[p] = 0);
+  state.active = CARDS.map(() => 0);
   if (state.charts.race) { state.charts.race.destroy(); state.charts.race = null; }
   gen++; // results still in flight for the old league are dropped
   if (loadCache()) renderAll();
   else {
-    PANELS.forEach(p => document.getElementById("card-" + p).innerHTML = `<div class="loader"></div>`);
+    showInCards(`<div class="loader"></div>`);
     document.getElementById("status").textContent = "LOADING " + league().name.toUpperCase() + "…";
   }
   startRotate();
@@ -543,15 +601,19 @@ function startRotate() {
   clearInterval(rotateTimer);
   rotateTimer = setInterval(() => {
     if (document.hidden || !state.standings || state.picker) return; // don't flip views under an open menu
-    PANELS.forEach(p => { state.view[p] = (state.view[p] + 1) % VIEWS[p].length; renderPanel(p); });
+    CARDS.forEach((c, i) => { advanceCard(i); renderPanel(activePanel(i)); });
   }, ROTATE_MS);
 }
+// Draws panel p into its card, if p is the panel that card is showing.
 function renderPanel(p) {
   if (!state.standings || !state.matches) return;
-  document.getElementById("card-" + p).innerHTML = RENDER[p]();
+  const i = cardIndex(p);
+  if (i < 0 || activePanel(i) !== p) return;
+  if (p !== "race" && state.charts.race && CARDS[i].includes("race")) { state.charts.race.destroy(); state.charts.race = null; }
+  document.getElementById("card-" + i).innerHTML = RENDER[p]();
   if (p === "race") drawRaceChart();
 }
-function renderAll() { PANELS.forEach(renderPanel); renderStatus(); }
+function renderAll() { CARDS.forEach((c, i) => renderPanel(activePanel(i))); renderStatus(); }
 
 function renderStatus() {
   const el = document.getElementById("status");
@@ -729,8 +791,7 @@ async function refresh() {
     if (my !== gen) return;
     console.warn(e);
     state.error = e.message;
-    if (!state.standings) PANELS.forEach(p => document.getElementById("card-" + p).innerHTML =
-      `<div class="empty-msg">Can't load ${esc(lg.name)}.<br>Retrying in a minute…</div>`);
+    if (!state.standings) showInCards(`<div class="empty-msg">Can't load ${esc(lg.name)}.<br>Retrying in a minute…</div>`);
     renderStatus();
   } finally {
     if (inFlightGen === my) inFlightGen = null;
@@ -760,10 +821,18 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // Redraw the chart when the iCUE slot is resized
-let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => PANELS.includes("race") && renderPanel("race"), 200); });
+// When the iCUE slot is resized: switch layout if the slot size changed, else just redraw the chart.
+let rz; window.addEventListener("resize", () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => {
+    if (initGrid()) { if (state.standings) renderAll(); else showInCards(`<div class="loader"></div>`); }
+    else renderPanel("race");
+  }, 200);
+});
 
 document.title = league().name + " Widget";
 initGrid();
+document.getElementById("status").textContent = "WAKING SERVER… (can take ~1 min)";
 if (loadCache()) renderAll();
 startRotate();
 refresh();
