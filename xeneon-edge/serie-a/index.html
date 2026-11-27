@@ -124,6 +124,28 @@
   .foot { flex-shrink: 0; display: flex; justify-content: space-between; gap: 1em; color: var(--dim);
     font-size: clamp(7px, 1.4vh, 11px); padding: 0 2px; white-space: nowrap; overflow: hidden; }
   .foot .err { color: var(--loss); }
+
+  /* league / team pickers: a tappable title opens a menu that covers its card */
+  .pick-btn { cursor: pointer; display: inline-flex; align-items: center; gap: .35em; max-width: 100%;
+    border-bottom: 1px dashed var(--dim); padding-bottom: .05em; }
+  .pick-btn::after { content: "▾"; font-size: .7em; color: var(--secondary); }
+  .picker { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; gap: min(2cqh, 2cqw);
+    padding: min(4cqh, 4cqw); background: rgba(9,9,11,.97); }
+  .picker-head { display: flex; justify-content: space-between; align-items: center; }
+  .picker-x { font-size: clamp(12px, min(6cqh, 4cqw), 26px); color: var(--secondary); padding: 0 .3em; }
+  /* rows share the card's height (no scrolling on the Edge); they only scroll if a slot is too small */
+  .opts { flex: 1; min-height: 0; display: grid; gap: min(1.5cqh, 1.2cqw); overflow-y: auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: minmax(18px, 1fr); }
+  .opts.league { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(28px, 1fr); }
+  .opt { display: flex; align-items: center; justify-content: center; gap: .45em; min-width: 0; padding: 0 .5em;
+    border: 1px solid var(--border); border-radius: 5px; background: var(--card); color: var(--primary); cursor: pointer;
+    font: inherit; font-size: clamp(8px, min(4.2cqh, 2.6cqw), 20px); white-space: nowrap; overflow: hidden; }
+  .opts.league .opt { font-size: clamp(10px, min(7cqh, 3.6cqw), 28px); font-weight: 700; white-space: normal; text-align: center; line-height: 1.2; }
+  .opt span { overflow: hidden; text-overflow: ellipsis; }
+  .opt.on { background: var(--primary); color: #000; font-weight: 700; border-color: var(--primary); }
+  @container (max-aspect-ratio: 5/4) { .opts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @container (max-aspect-ratio: 1/2) { .opts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .opts.league { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 </style>
 </head>
 <body>
@@ -137,15 +159,33 @@
 
 <script>
 /* ───────────── CONFIG (URL params) ─────────────
-   ?team=JUV            team to follow: 3-letter code (JUV, INT, MIL, NAP…), team id, or name
+   ?league=serie-a      starting league: serie-a, premier-league, laliga, saudi-pro-league
+   ?team=JUV            starting team in that league: 3-letter code (JUV, INT, MIL, NAP…), team id, or name
    ?panels=matchday,table,team,race   which panels, in order (1–4 of them)
    ?api=https://…       backend base URL (default: your Render service)
    ?rotate=20           switch each panel to its next view every N seconds (min 5; off by default)
+   On the widget: tap the league name (matchday panel) to switch league, and the team name
+   (standings or team panel) to switch team. Those choices are remembered and win over ?league/?team.
 */
 const params = new URLSearchParams(location.search);
 // Your Render backend (api-soccer). Override with ?api=… if it ever moves.
 const API = (params.get("api") || "https://soccer-jcbp.onrender.com").replace(/\/$/, "");
-const TEAM_Q = (params.get("team") || "JUV").trim();
+// id = API-Football league id, used to check the backend really sent this league.
+const LEAGUES = [
+  { slug: "serie-a", name: "Serie A", id: 135 },
+  { slug: "premier-league", name: "Premier League", id: 39 },
+  { slug: "laliga", name: "LaLiga", id: 140 },
+  { slug: "saudi-pro-league", name: "Saudi Pro League", id: 307 },
+];
+const URL_LEAGUE = LEAGUES.some(l => l.slug === params.get("league")) ? params.get("league") : "serie-a";
+const TEAM_Q = (params.get("team") || (URL_LEAGUE === "serie-a" ? "JUV" : "")).trim();
+
+// Choices made on the widget, kept per widget URL so two iCUE widgets with different settings stay apart.
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* blocked — choice lasts until reload */ } },
+};
+const PREFS = "xeneon-football:" + location.pathname + location.search + ":";
 const ALL_PANELS = ["matchday", "table", "team", "race"];
 const PANELS = (params.get("panels") || ALL_PANELS.join(","))
   .split(",").map(s => s.trim().toLowerCase()).filter(p => ALL_PANELS.includes(p)).slice(0, 4);
@@ -154,12 +194,23 @@ const ROTATE_MS = (() => { const n = Number(params.get("rotate")); return n > 0 
 
 const VIEWS = {
   matchday: [["cur", "CUR"], ["prev", "PREV"], ["next", "NEXT"]],
-  table: [["top", "1–10"], ["bottom", "11–20"]],
+  table: [["top", () => "1–" + half()], ["bottom", () => (half() + 1) + "–" + table().length]],
   team: [["form", "FORM"], ["splits", "HOME/AWAY"]],
   race: [["points", "POINTS"], ["position", "POSITION"]],
 };
-const state = { standings: null, matches: null, view: {}, updated: null, error: null, charts: {} };
+const savedLeague = store.get(PREFS + "league");
+const state = {
+  league: LEAGUES.some(l => l.slug === savedLeague) ? savedLeague : URL_LEAGUE,
+  teamId: null, picker: null,
+  standings: null, matches: null, view: {}, updated: null, error: null, charts: {},
+};
 PANELS.forEach(p => state.view[p] = 0);
+const league = () => LEAGUES.find(l => l.slug === state.league);
+function loadTeamPref() {
+  const v = Number(store.get(PREFS + "team:" + state.league));
+  state.teamId = v > 0 ? v : null;
+}
+loadTeamPref();
 
 const LIVE = new Set(["IN_PLAY", "PAUSED", "LIVE"]);
 const DONE = new Set(["FINISHED", "AWARDED"]);
@@ -189,13 +240,33 @@ function currentMatchday() {
   return state.currentMatchday || (state.standings && state.standings.season && state.standings.season.currentMatchday)
     || (state.matches && state.matches[0] && state.matches[0].season && state.matches[0].season.currentMatchday) || 1;
 }
+const half = () => Math.ceil(table().length / 2) || 10;
+// The team picked on the widget, else ?team= (only for the league the URL starts on).
 function followed() {
-  const q = TEAM_Q.toLowerCase();
   const rows = table();
+  if (state.teamId != null) {
+    const r = rows.find(r => r.team.id === state.teamId);
+    if (r) return r;
+  }
+  const q = TEAM_Q.toLowerCase();
+  if (!q || state.league !== URL_LEAGUE) return null;
   const r = rows.find(r => String(r.team.id) === q || (r.team.tla || "").toLowerCase() === q)
     || rows.find(r => (r.team.shortName || "").toLowerCase() === q || (r.team.name || "").toLowerCase() === q)
     || rows.find(r => (r.team.name || "").toLowerCase().includes(q) || (r.team.shortName || "").toLowerCase().includes(q));
   return r || null;
+}
+// Table zone stripe. API-Football's per-row `description` knows each league's real rules
+// (UCL/UEL/UECL places, AFC places, relegation); fall back to Serie A's layout without it.
+function zoneFor(r, rows) {
+  if (rows.some(x => x.description)) {
+    const d = (r.description || "").toLowerCase();
+    if (d.includes("relegation")) return "var(--rel)";
+    if (d.includes("conference")) return "var(--uecl)";
+    if (d.includes("europa")) return "var(--uel)";
+    if (d.includes("champions")) return "var(--ucl)";
+    return "transparent";
+  }
+  return zone(r.position, rows.length);
 }
 function zone(pos, n) {
   if (pos <= 4) return "var(--ucl)";
@@ -214,7 +285,25 @@ function resultFor(m, id) {
 /* ───────────── panels ───────────── */
 function shell(id, inner) {
   return `<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>${inner}
-    <div class="pills">${VIEWS[id].map(([, lbl], i) => `<span class="pill ${i === state.view[id] ? "on" : ""}">${lbl}</span>`).join("")}</div>`;
+    <div class="pills">${VIEWS[id].map(([, lbl], i) => `<span class="pill ${i === state.view[id] ? "on" : ""}">${typeof lbl === "function" ? lbl() : lbl}</span>`).join("")}</div>
+    ${pickerHtml(id)}`;
+}
+
+// The open menu (state.picker = { panel, kind }) is part of its card's render, so refreshes keep it open.
+function pickerHtml(panel) {
+  const p = state.picker;
+  if (!p || p.panel !== panel) return "";
+  let title, cls, opts;
+  if (p.kind === "league") {
+    title = "League"; cls = "league";
+    opts = LEAGUES.map(l => `<button class="opt ${l.slug === state.league ? "on" : ""}" data-league="${l.slug}"><span>${esc(l.name)}</span></button>`);
+  } else {
+    const me = followed();
+    title = "Your team · " + esc(league().name); cls = "team";
+    opts = table().map(r => `<button class="opt ${me && me.team.id === r.team.id ? "on" : ""}" data-team="${r.team.id}">${crest(r.team)}<span>${esc(r.team.shortName || r.team.name)}</span></button>`);
+  }
+  return `<div class="picker"><div class="picker-head"><span class="label">${title}</span><span class="picker-x">✕</span></div>
+    <div class="opts ${cls}">${opts.join("")}</div></div>`;
 }
 
 function renderMatchday() {
@@ -224,7 +313,7 @@ function renderMatchday() {
   const list = (state.matches || []).filter(m => m.matchday === md).sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   const live = list.filter(m => LIVE.has(m.status)).length;
   const done = list.filter(m => DONE.has(m.status)).length;
-  const right = live ? `<span class="tag live">● ${live} LIVE</span>` : `<span class="muted">${done}/${list.length || 10} PLAYED</span>`;
+  const right = live ? `<span class="tag live">● ${live} LIVE</span>` : `<span class="muted">${done}/${list.length || Math.floor(table().length / 2) || 10} PLAYED</span>`;
 
   const rows = list.length ? list.map(m => {
     let mid, cls = "";
@@ -242,7 +331,7 @@ function renderMatchday() {
   }).join("") : `<div class="empty-msg">No matches for matchday ${md}</div>`;
 
   return shell("matchday", `
-    <div class="head"><div><div class="label">Serie A</div><div class="title">MATCHDAY ${md}</div></div>
+    <div class="head"><div style="min-width:0"><div class="label">Matchday ${md}</div><div class="title"><span class="pick-btn" data-pick="league">${esc(league().name.toUpperCase())}</span></div></div>
       <div class="right label">${right}</div></div>
     <div class="body">${rows}</div>`);
 }
@@ -250,19 +339,19 @@ function renderMatchday() {
 function renderTable() {
   const rows = table();
   const bottom = VIEWS.table[state.view.table][0] === "bottom";
-  const slice = bottom ? rows.slice(10, 20) : rows.slice(0, 10);
+  const slice = bottom ? rows.slice(half()) : rows.slice(0, half());
   const me = followed();
   const body = !rows.length ? `<div class="empty-msg">No standings yet</div>` : `<div class="row hdr"><span class="t-pos">#</span><span class="t-team">CLUB</span><span class="t-col">P</span><span class="t-col">GD</span><span class="t-pts">PTS</span></div>` +
     slice.map(r => `<div class="row ${me && me.team.id === r.team.id ? "me" : ""}">
-      <span class="t-pos num" style="--zone:${zone(r.position, rows.length)}">${r.position}</span>
+      <span class="t-pos num" style="--zone:${zoneFor(r, rows)}">${r.position}</span>
       <span class="t-team">${crest(r.team)}<span>${esc(r.team.shortName || r.team.name)}</span></span>
       <span class="t-col num muted">${r.playedGames}</span>
       <span class="t-col num muted">${sign(r.goalDifference)}</span>
       <span class="t-pts num">${r.points}</span></div>`).join("");
-  const leader = rows[0];
+  const teamBtn = rows.length ? `<span class="pick-btn" data-pick="team">${me ? tla(me.team) : "PICK"}</span>` : "–";
   return shell("table", `
-    <div class="head"><div><div class="label">Standings</div><div class="title">SERIE A</div></div>
-      <div class="right"><div class="label">Leader</div><div class="big">${leader ? tla(leader.team) + " " + leader.points : "–"}</div></div></div>
+    <div class="head"><div style="min-width:0"><div class="label">Standings</div><div class="title">${esc(league().name.toUpperCase())}</div></div>
+      <div class="right"><div class="label">Your team</div><div class="big">${teamBtn}</div></div></div>
     <div class="body">${body}</div>`);
 }
 
@@ -283,13 +372,13 @@ function teamStats(id) {
 
 function renderTeam() {
   const me = followed();
-  if (!table().length) return shell("team", `<div class="head"><div><div class="label">Your team</div><div class="title">${esc(TEAM_Q.toUpperCase())}</div></div></div>
+  if (!table().length) return shell("team", `<div class="head"><div><div class="label">Your team</div><div class="title">${esc(league().name.toUpperCase())}</div></div></div>
     <div class="empty-msg">No standings yet — the new season hasn't started.</div>`);
-  if (!me) return shell("team", `<div class="head"><div><div class="label">Your team</div><div class="title">NOT FOUND</div></div></div>
-    <div class="empty-msg">No team matches "${esc(TEAM_Q)}". Use a 3-letter code like ?team=JUV</div>`);
+  if (!me) return shell("team", `<div class="head"><div><div class="label">Your team</div><div class="title"><span class="pick-btn" data-pick="team">PICK A TEAM</span></div></div></div>
+    <div class="empty-msg">Tap "Pick a team" to choose one from the ${esc(league().name)} table.</div>`);
   const id = me.team.id, st = teamStats(id);
   const view = VIEWS.team[state.view.team][0];
-  const head = `<div class="head"><div><div class="label">Your team</div><div class="title">${crest(me.team)}${esc(me.team.shortName || me.team.name)}</div></div>
+  const head = `<div class="head"><div style="min-width:0"><div class="label">Your team</div><div class="title"><span class="pick-btn" data-pick="team">${crest(me.team)}${esc(me.team.shortName || me.team.name)}</span></div></div>
     <div class="right"><div class="label">#${me.position} · ${me.playedGames}P</div><div class="big num">${me.points} PTS</div></div></div>`;
 
   let body;
@@ -391,7 +480,7 @@ function drawRaceChart() {
       plugins: { legend: { display: false }, tooltip: { enabled: false } },
       scales: {
         x: { grid: { color: "#27272a" }, ticks: { color: "#71717a", font: { family: "JetBrains Mono", size: fs }, maxTicksLimit: 8, maxRotation: 0 } },
-        y: { reverse: posView, min: posView ? 1 : undefined, max: posView ? 20 : undefined,
+        y: { reverse: posView, min: posView ? 1 : undefined, max: posView ? (table().length || 20) : undefined,
           grid: { color: "#27272a" }, ticks: { color: "#71717a", font: { family: "JetBrains Mono", size: fs }, maxTicksLimit: 5, precision: 0 } },
       },
     },
@@ -406,11 +495,45 @@ function initGrid() {
   grid.className = "grid n" + PANELS.length;
   grid.innerHTML = PANELS.map(p => `<div class="card" id="card-${p}"><div class="loader"></div></div>`).join("");
   document.getElementById("status").textContent = "WAKING SERVER… (can take ~1 min)";
-  PANELS.forEach(p => document.getElementById("card-" + p).addEventListener("click", () => {
-    state.view[p] = (state.view[p] + 1) % VIEWS[p].length;
-    renderPanel(p);
-    startRotate(); // a tap restarts the rotate timer so the view you picked stays up for a full period
-  }));
+  PANELS.forEach(p => document.getElementById("card-" + p).addEventListener("click", e => onCardTap(p, e)));
+}
+function onCardTap(p, e) {
+  const t = e.target;
+  const lg = t.closest("[data-league]"), tm = t.closest("[data-team]"), pick = t.closest("[data-pick]");
+  if (lg) return setLeague(lg.dataset.league);
+  if (tm) return setTeam(Number(tm.dataset.team));
+  if (t.closest(".picker")) { state.picker = null; return renderPanel(p); } // ✕ or empty space closes the menu
+  if (pick) { state.picker = { panel: p, kind: pick.dataset.pick }; return renderPanel(p); }
+  state.view[p] = (state.view[p] + 1) % VIEWS[p].length;
+  renderPanel(p);
+  startRotate(); // a tap restarts the rotate timer so the view you picked stays up for a full period
+}
+
+function setTeam(id) {
+  state.teamId = id;
+  store.set(PREFS + "team:" + state.league, String(id));
+  state.picker = null;
+  renderAll();
+  startRotate();
+}
+function setLeague(slug) {
+  state.picker = null;
+  if (slug === state.league) { renderAll(); return; }
+  state.league = slug;
+  store.set(PREFS + "league", slug);
+  loadTeamPref();
+  document.title = league().name + " Widget";
+  Object.assign(state, { standings: null, matches: null, currentMatchday: null, updated: null, error: null, fromCache: false });
+  PANELS.forEach(p => state.view[p] = 0);
+  if (state.charts.race) { state.charts.race.destroy(); state.charts.race = null; }
+  gen++; // results still in flight for the old league are dropped
+  if (loadCache()) renderAll();
+  else {
+    PANELS.forEach(p => document.getElementById("card-" + p).innerHTML = `<div class="loader"></div>`);
+    document.getElementById("status").textContent = "LOADING " + league().name.toUpperCase() + "…";
+  }
+  startRotate();
+  refresh();
 }
 
 /* ───────────── auto-rotate (?rotate=N) ───────────── */
@@ -419,7 +542,7 @@ function startRotate() {
   if (!ROTATE_MS) return;
   clearInterval(rotateTimer);
   rotateTimer = setInterval(() => {
-    if (document.hidden || !state.standings) return;
+    if (document.hidden || !state.standings || state.picker) return; // don't flip views under an open menu
     PANELS.forEach(p => { state.view[p] = (state.view[p] + 1) % VIEWS[p].length; renderPanel(p); });
   }, ROTATE_MS);
 }
@@ -451,8 +574,20 @@ const AF_DONE = new Set(["FT", "AET", "PEN", "AWD", "WO"]);
 const AF_LIVE = new Set(["1H", "HT", "2H", "ET", "BT", "P", "LIVE", "INT"]);
 const AF_OFF = new Set(["PST", "CANC", "ABD", "SUSP"]);
 
-// API-Football has no 3-letter codes in fixtures/standings, so map Serie A names.
+// API-Football has no 3-letter codes in fixtures/standings, so map names. Only names the
+// fallback in code() gets wrong need an entry (e.g. "Manchester City" → MAN, "Al-Hilal Saudi FC" is fine → HIL).
 const CODES = {
+  // Premier League
+  "manchester city": "MCI", "manchester united": "MUN", "aston villa": "AVL", "brighton": "BHA",
+  "nottingham forest": "NFO", "west ham": "WHU", "wolves": "WOL", "tottenham": "TOT", "newcastle": "NEW",
+  "crystal palace": "CRY", "bournemouth": "BOU", "brentford": "BRE", "leicester": "LEI", "southampton": "SOU",
+  // LaLiga
+  "real madrid": "RMA", "real betis": "BET", "real sociedad": "RSO", "atletico madrid": "ATM", "athletic club": "ATH",
+  "mallorca": "MLL", "las palmas": "LPA", "valladolid": "VLL", "valencia": "VAL", "rayo vallecano": "RAY",
+  "celta vigo": "CEL", "barcelona": "BAR", "alaves": "ALA", "oviedo": "OVI", "girona": "GIR", "sevilla": "SEV",
+  // Saudi Pro League
+  "al-ahli jeddah": "AHL", "al-khaleej saihat": "KHA", "al-qadisiyah fc": "QAD",
+  // Serie A (and recent Serie A clubs)
   "juventus": "JUV", "inter": "INT", "ac milan": "MIL", "milan": "MIL", "napoli": "NAP", "as roma": "ROM", "roma": "ROM",
   "lazio": "LAZ", "atalanta": "ATA", "fiorentina": "FIO", "bologna": "BOL", "torino": "TOR", "udinese": "UDI",
   "genoa": "GEN", "cagliari": "CAG", "lecce": "LEC", "parma": "PAR", "como": "COM", "verona": "VER",
@@ -463,7 +598,8 @@ const CODES = {
 function code(name) {
   const n = String(name || "").toLowerCase().trim();
   if (CODES[n]) return CODES[n];
-  const stripped = n.replace(/^(ac|as|ss|us|fc|ssc|acf|uc)\s+/, "").replace(/\s+(fc|calcio|1913|1907)$/, "");
+  const stripped = n.replace(/^(ac|as|ss|us|fc|ssc|acf|uc|al)[\s-]+/, "")
+    .replace(/\s+(saudi fc|fc|sc|cf|club|calcio|1913|1907)$/, "");
   return CODES[stripped] || stripped.replace(/[^a-z]/g, "").slice(0, 3).toUpperCase() || "TBD";
 }
 const team = t => ({ id: t.id, name: t.name, shortName: t.name, tla: code(t.name), crest: t.logo || "" });
@@ -474,6 +610,12 @@ function assertOk(json) {
   const hasErr = e && (Array.isArray(e) ? e.length : Object.keys(e).length);
   if (hasErr) throw new Error("API-Football: " + JSON.stringify(e));
   // An empty `response` is not an error: between seasons there are simply no fixtures/standings yet.
+}
+/** Throws if the backend sent another league than asked for (an older backend ignores ?league= and sends Serie A). */
+function assertLeague(json, id) {
+  const item = json && Array.isArray(json.response) && json.response[0];
+  const got = item && item.league && item.league.id;
+  if (got && got !== id) throw new Error(`Backend sent league ${got}, expected ${id} — update the api-soccer backend`);
 }
 
 function normalizeMatches(json) {
@@ -527,6 +669,7 @@ function normalizeStandings(json) {
     points: r.points,
     goalsFor: r.all.goals.for, goalsAgainst: r.all.goals.against,
     goalDifference: r.goalsDiff,
+    description: r.description || "",
   }));
   return { standings: [{ type: "TOTAL", table: rows }] };
 }
@@ -542,16 +685,16 @@ async function getJSON(path) {
 /* ───────────── last-good-data cache ─────────────
    The last successful payload is kept in localStorage so a reload draws the panels at once
    instead of waiting ~1 min for Render to wake up. Fresh data replaces it when it arrives. */
-const CACHE_KEY = "serie-a-widget:v1:" + API;
+const cacheKey = () => "serie-a-widget:v2:" + API + ":" + state.league;
 const CACHE_MAX_AGE = 14 * 864e5; // older than two weeks → too stale to be useful
 function saveCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ standings: state.standings, matches: state.matches, updated: state.updated.toISOString() }));
+    localStorage.setItem(cacheKey(), JSON.stringify({ standings: state.standings, matches: state.matches, updated: state.updated.toISOString() }));
   } catch (e) { /* storage full or blocked — the widget just starts cold next time */ }
 }
 function loadCache() {
   try {
-    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+    const c = JSON.parse(localStorage.getItem(cacheKey()) || "null");
     if (!c || !c.standings || !Array.isArray(c.matches)) return false;
     const updated = new Date(c.updated);
     if (!(Date.now() - updated < CACHE_MAX_AGE)) return false;
@@ -564,13 +707,17 @@ function loadCache() {
   } catch (e) { return false; }
 }
 
-let refreshTimer = null, inFlight = false;
+// gen goes up on every league switch; a refresh only applies its result if gen hasn't moved.
+let refreshTimer = null, gen = 0, inFlightGen = null;
 async function refresh() {
   clearTimeout(refreshTimer);
-  if (inFlight) return;
-  inFlight = true;
+  if (inFlightGen === gen) return; // a refresh for this league is already running
+  const my = inFlightGen = gen, lg = league();
   try {
-    const [rawStandings, rawFixtures] = await Promise.all([getJSON("/api/widget/standings"), getJSON("/api/widget/fixtures")]);
+    const q = "?league=" + encodeURIComponent(lg.slug);
+    const [rawStandings, rawFixtures] = await Promise.all([getJSON("/api/widget/standings" + q), getJSON("/api/widget/fixtures" + q)]);
+    if (my !== gen) return; // league changed while waiting; the newer refresh takes over
+    assertLeague(rawStandings, lg.id); assertLeague(rawFixtures, lg.id);
     const standings = normalizeStandings(rawStandings), matches = normalizeMatches(rawFixtures);
     state.standings = standings;
     state.matches = matches.matches || [];
@@ -579,13 +726,14 @@ async function refresh() {
     saveCache();
     renderAll();
   } catch (e) {
+    if (my !== gen) return;
     console.warn(e);
     state.error = e.message;
     if (!state.standings) PANELS.forEach(p => document.getElementById("card-" + p).innerHTML =
-      `<div class="empty-msg">Can't reach the data API.<br>Retrying in a minute…</div>`);
+      `<div class="empty-msg">Can't load ${esc(lg.name)}.<br>Retrying in a minute…</div>`);
     renderStatus();
   } finally {
-    inFlight = false;
+    if (inFlightGen === my) inFlightGen = null;
   }
   schedule();
 }
@@ -614,6 +762,7 @@ document.addEventListener("visibilitychange", () => {
 // Redraw the chart when the iCUE slot is resized
 let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => PANELS.includes("race") && renderPanel("race"), 200); });
 
+document.title = league().name + " Widget";
 initGrid();
 if (loadCache()) renderAll();
 startRotate();
